@@ -30,44 +30,51 @@ export function usePriceCalculation(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Track latest request timestamp to prevent stale responses from overwriting newer ones.
-  // Guards against race conditions when the user changes options in rapid succession.
-  const latestRequestRef = useRef<number>(0);
+  // Monotonic in-flight id so older responses cannot overwrite a newer fetch.
+  const latestRequestRef = useRef(0);
 
   const fetchPrice = useCallback(async () => {
     if (!config) {
       setPrice(null);
       setFormattedTotal('$0.00');
+      setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
     setError(null);
 
-    const requestTime = Date.now();
-    latestRequestRef.current = requestTime;
+    const requestId = latestRequestRef.current + 1;
+    latestRequestRef.current = requestId;
 
     try {
       const response: PriceResponse = await calculatePrice(config, product);
 
-      if (response.timestamp >= latestRequestRef.current) {
-        setPrice(response.breakdown);
-        setFormattedTotal(response.formattedTotal);
+      // Apply only the latest in-flight request. Do not compare against
+      // response.timestamp — the mock API uses a request counter there, not a clock.
+      if (requestId !== latestRequestRef.current) {
+        return;
       }
+
+      setPrice(response.breakdown);
+      setFormattedTotal(response.formattedTotal);
     } catch {
-      // Only set error if this is still the latest request
-      if (requestTime === latestRequestRef.current) {
-        setError('ERR_PRICE_CALC_FAILED');
-        setPrice(null);
+      if (requestId !== latestRequestRef.current) {
+        return;
       }
+      setError('ERR_PRICE_CALC_FAILED');
+      setPrice(null);
     } finally {
-      setIsLoading(false);
+      if (requestId === latestRequestRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [config, product]);
 
-  // Fetch price when config changes
   useEffect(() => {
-    fetchPrice();
+    // Sync with the pricing API when the quote inputs change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchPrice sets loading before the request
+    void fetchPrice();
   }, [config?.selections, config?.addOns, config?.quantity]);
 
   return {
@@ -103,6 +110,7 @@ export function useDebouncedPriceCalculation(
     }
 
     if (!config) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset quote when config is cleared
       setPrice(null);
       setFormattedTotal('$0.00');
       setIsLoading(false);

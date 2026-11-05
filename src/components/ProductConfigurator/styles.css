@@ -446,6 +446,12 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
+.quick-add-shortcut {
+  margin-left: 8px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
 /* Draft Management */
 .draft-section {
   margin-top: 24px;

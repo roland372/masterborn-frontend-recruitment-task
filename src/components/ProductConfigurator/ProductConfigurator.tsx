@@ -183,6 +183,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const quickAddButtonRef = useRef<HTMLButtonElement>(null);
   const lastFocusedElement = useRef<HTMLElement | null>(null);
 
   // -------------------------------------------------------------------------
@@ -420,10 +421,41 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
   }, [validation, price, currentConfig, onAddToCart]);
 
   const handleQuickAdd = useCallback(() => {
-    if (price && onAddToCart) {
+    if (!readOnly && validation?.valid && !isPriceLoading && price && onAddToCart) {
       onAddToCart(currentConfig, price);
     }
-  }, [price, currentConfig, onAddToCart]);
+  }, [readOnly, validation, isPriceLoading, price, onAddToCart, currentConfig]);
+
+  useEffect(() => {
+    const handleQuickAddShortcut = (event: KeyboardEvent) => {
+      const target = event.target;
+      const isEditing =
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.matches('input, textarea, select'));
+
+      if (
+        !(event.ctrlKey || event.metaKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        event.key !== 'Enter' ||
+        isEditing ||
+        showDraftModal ||
+        showShareModal ||
+        !quickAddButtonRef.current ||
+        quickAddButtonRef.current?.disabled
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      handleQuickAdd();
+    };
+
+    window.addEventListener('keydown', handleQuickAddShortcut);
+    return () => {
+      window.removeEventListener('keydown', handleQuickAddShortcut);
+    };
+  }, [handleQuickAdd, showDraftModal, showShareModal]);
 
   const handleCopyShareUrl = useCallback(() => {
     navigator.clipboard
@@ -986,10 +1018,15 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
             <div className="quick-add-section">
               <button
                 className="quick-add-btn"
+                ref={quickAddButtonRef}
                 onClick={handleQuickAdd}
-                disabled={readOnly || !validation?.valid}
+                disabled={
+                  readOnly || !validation?.valid || isPriceLoading || !price || !onAddToCart
+                }
+                aria-keyshortcuts="Control+Enter Meta+Enter"
+                title="Keyboard shortcut: Ctrl+Enter or Command+Enter"
               >
-                ⚡ Quick Add to Cart
+                ⚡ Quick Add to Cart <span className="quick-add-shortcut">Ctrl/⌘+Enter</span>
               </button>
             </div>
           </div>

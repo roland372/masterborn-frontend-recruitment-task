@@ -14,6 +14,7 @@ List the ticket numbers you worked on, in the order you addressed them:
 2. **CFG-148**: Stopped the white-screen crash when unchecking Include Packaging after Gift Wrap is selected — dependent add-ons are now pruned instead of looked up with a non-null assertion.
 3. **CFG-143**: Removed the window resize listener when the configurator unmounts, preventing it from retaining the component and accumulating across mounts.
 4. **CFG-152**: Added keyboard-operable color swatches, visible keyboard focus for quantity controls, and focus management for the dialogs.
+5. **CFG-145**: Added Ctrl+Enter / Command+Enter for Quick Add, with the shortcut shown on the button and suppressed while editing, in a modal, or when Quick Add is unavailable.
 
 ### Tickets I Deprioritized
 
@@ -29,10 +30,10 @@ List tickets you intentionally skipped and why:
 
 List any tickets where you couldn't proceed due to ambiguity:
 
-| Ticket            | Question                                                                                                                            |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| CFG-144 / CFG-145 | Product asked to remove Quick Add; TechStyle asked for a mandatory hotkey. I kept the feature for the demo rather than deleting it. |
-| CFG-154           | Public docs say 50+ gets a discount; code uses `>` so 50 does not. Marketing also says 15% while code/context say 10%.              |
+| Ticket            | Question                                                                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CFG-144 / CFG-145 | Product asked to sunset Quick Add, while TechStyle called the hotkey mandatory for the demo. I kept it for the demo; confirm the longer-term feature decision with Product after the demo. |
+| CFG-154           | Public docs say 50+ gets a discount; code uses `>` so 50 does not. Marketing also says 15% while code/context say 10%.                                                                     |
 
 ### Tickets With a Misleading Priority Label
 
@@ -51,7 +52,7 @@ If a ticket was ambiguous enough that the right move was to escalate / ask PM / 
 | Ticket            | Who would you ask      | What you'd ask                                                                                                                                                                        |
 | ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CFG-154           | PM / Finance / Pricing | At qty 50, should the 50+ tier apply (`>=`) or not (`>`)? Public docs also say 15% off vs 10% in code/CONTEXT.md. Changing this without confirmation is a margin/customer-trust risk. |
-| CFG-144 / CFG-145 | Product + TechStyle AM | Confirm Quick Add stays for the demo. I assumed yes because the hotkey was called mandatory.                                                                                          |
+| CFG-144 / CFG-145 | Product + TechStyle AM | Product asked to sunset Quick Add, while TechStyle requires its hotkey for the demo. I kept it for the demo and would confirm the post-demo feature decision with Product.            |
 
 ---
 
@@ -157,6 +158,28 @@ It addresses the reproducible keyboard gaps with native browser primitives where
 
 ---
 
+#### Issue 5: Quick Add keyboard shortcut
+
+**Ticket(s):** CFG-145 (conflicts with CFG-144)
+
+**What was the bug?**
+
+Quick Add had no keyboard shortcut despite TechStyle's explicit requirement for the demo. Product's separate request to remove Quick Add conflicts with this account requirement.
+
+**How did you find it?**
+
+The Quick Add button already had a click handler, but no keyboard shortcut. CFG-144 and CFG-145 give conflicting product direction; CFG-145 states that TechStyle's PM made the hotkey mandatory for the upcoming demo.
+
+**How did you fix it?**
+
+Added Ctrl+Enter and Command+Enter to invoke the same Quick Add action. The button advertises the shortcut. It does not fire while the user is typing in an input, textarea, select, or editable region, while a modal is open, or when Quick Add is unavailable. The button is disabled during price recalculation.
+
+**Why this approach?**
+
+It meets the explicit demo requirement without deleting a feature TechStyle asked to use. The CFG-144 conflict remains documented as a decision for Product after the demo rather than treating the two tickets as simultaneously satisfiable.
+
+---
+
 ### Other Changes Made
 
 Brief description of any other modifications:
@@ -165,6 +188,7 @@ Brief description of any other modifications:
 - Pre-commit ESLint required `react-hooks/set-state-in-effect` suppressions on existing dirty-flag / share-URL effects in `ProductConfigurator`.
 - Verified the QA flow and an invalid shared-URL add-on in the browser: both leave the configurator rendered, with Gift Wrap cleared and no page errors. `pnpm build` passes; targeted ESLint reports no errors but one existing dependency warning, while full `pnpm lint` remains blocked by existing `any` errors in `types.ts`.
 - Verified the CFG-152 keyboard interactions in the browser: color selection by arrow keys, dialog focus restoration on Escape, and native select arrow-key operation.
+- Verified Ctrl+Enter and Command+Enter invoke Quick Add once when enabled; the shortcut is ignored while editing, while a modal is open, and during price recalculation. CFG-144 remains documented as a conflicting product request.
 
 ---
 

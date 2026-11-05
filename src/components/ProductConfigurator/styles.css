@@ -166,6 +166,12 @@
   cursor: not-allowed;
 }
 
+.quantity-btn:focus-visible,
+.color-swatch:focus-visible {
+  outline: 3px solid #1769aa;
+  outline-offset: 3px;
+}
+
 .quantity-input {
   width: 80px;
   padding: 8px 12px;

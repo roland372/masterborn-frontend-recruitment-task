@@ -13,6 +13,7 @@ List the ticket numbers you worked on, in the order you addressed them:
 1. **CFG-142**: Fixed price display staying at `$0.00` by applying only the latest in-flight price response (the hook was comparing a request counter to `Date.now()`).
 2. **CFG-148**: Stopped the white-screen crash when unchecking Include Packaging after Gift Wrap is selected — dependent add-ons are now pruned instead of looked up with a non-null assertion.
 3. **CFG-143**: Removed the window resize listener when the configurator unmounts, preventing it from retaining the component and accumulating across mounts.
+4. **CFG-152**: Added keyboard-operable color swatches, visible keyboard focus for quantity controls, and focus management for the dialogs.
 
 ### Tickets I Deprioritized
 
@@ -132,6 +133,30 @@ In the browser, React Strict Mode exercised two listener registrations and one c
 
 ---
 
+#### Issue 4: Keyboard navigation gaps
+
+**Ticket(s):** CFG-152
+
+**What was the bug?**
+
+Color swatches were mouse-only `div` elements without a tab stop or keyboard handling. Quantity buttons had no visible keyboard focus style. Modal focus was recorded and restored synchronously on close, but the dialogs did not receive focus when opened and did not keep tab navigation within the dialog.
+
+**How did you find it?**
+
+Compared the affected controls in `ProductConfigurator` and `styles.css` with the four areas listed in CFG-152. The option dropdowns are native HTML `<select>` elements, so their arrow-key behavior is provided by the browser; this ticket's "custom dropdown" note does not match the implementation.
+
+**How did you fix it?**
+
+- Added radio-group semantics, an accessible name, a roving tab stop, and arrow-key selection/navigation to color swatches.
+- Added a high-contrast `:focus-visible` outline to color swatches and quantity buttons.
+- Focus the first dialog control on open, keep Tab/Shift+Tab within the dialog, expose the modal dialog semantics, and restore focus to the trigger after close.
+
+**Why this approach?**
+
+It addresses the reproducible keyboard gaps with native browser primitives where available and completes the dialogs' focus lifecycle without replacing native selects or introducing a custom dropdown.
+
+---
+
 ### Other Changes Made
 
 Brief description of any other modifications:
@@ -139,6 +164,7 @@ Brief description of any other modifications:
 - Share-URL config is applied in `useState` initializers (instead of a mount `useEffect`) so pruned add-ons are in place on the first paint. This is to keep CFG-148 from resurfacing on a shared link; it is not a full CFG-147 encoding fix.
 - Pre-commit ESLint required `react-hooks/set-state-in-effect` suppressions on existing dirty-flag / share-URL effects in `ProductConfigurator`.
 - Verified the QA flow and an invalid shared-URL add-on in the browser: both leave the configurator rendered, with Gift Wrap cleared and no page errors. `pnpm build` passes; targeted ESLint reports no errors but one existing dependency warning, while full `pnpm lint` remains blocked by existing `any` errors in `types.ts`.
+- Verified the CFG-152 keyboard interactions in the browser: color selection by arrow keys, dialog focus restoration on Escape, and native select arrow-key operation.
 
 ---
 

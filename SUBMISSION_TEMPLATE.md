@@ -11,6 +11,7 @@ Total time: **\_\_** (approximate)
 List the ticket numbers you worked on, in the order you addressed them:
 
 1. **CFG-142**: Fixed price display staying at `$0.00` by applying only the latest in-flight price response (the hook was comparing a request counter to `Date.now()`).
+2. **CFG-148**: Stopped the white-screen crash when unchecking Include Packaging after Gift Wrap is selected — dependent add-ons are now pruned instead of looked up with a non-null assertion.
 
 ### Tickets I Deprioritized
 
@@ -80,9 +81,29 @@ That is the standard in-flight request guard and matches the catch branch. I did
 
 ---
 
-#### Issue 2: [Title]
+#### Issue 2: Crash when deselecting Include Packaging
 
-[Same structure as above]
+**Ticket(s):** CFG-148
+
+**What was the bug?**
+
+Gift Wrap depends on Include Packaging. `handleOptionChange` only dropped dependent add-ons for **select** options, with a comment that toggles were handled in `handleAddOnToggle` — they were not. Unchecking the packaging toggle left `addon_gift_wrap` in `selectedAddOns`. The summary then did `availableAddOns.get(id)!` on a map that only contains _currently available_ add-ons, so the lookup was `undefined` and `addOn.price` threw (`Cannot read properties of undefined (reading 'price')`). The cleanup also mutated `selectedAddOns` with `.splice` and passed that same array to `setSelectedAddOns`.
+
+The ticket's "Premium Material upgrade" step is not required for the crash; Gift Wrap's dependency is packaging, not material. I treated that as noisy repro text.
+
+**How did you find it?**
+
+Followed the QA steps, then traced `.price` reads. The summary was the only unguarded access, and it used a filtered `Map` with `!`.
+
+**How did you fix it?**
+
+- Prune any selected add-on whose dependency is no longer met on **every** option change (toggles included) and when loading a saved draft, without mutating the previous array.
+- Resolve add-on prices from `product.addOns` with a null check, not from the availability map.
+- Hydrate shared-URL / initial add-ons through the same prune so a shared config cannot mount in the crashing state. Encoding issues stay under CFG-147.
+
+**Why this approach?**
+
+Removing Gift Wrap when packaging is off matches the dependency rule and the UX (the add-on becomes disabled). A null check alone would stop the crash but leave an invalid add-on in the configuration and in the price request.
 
 ---
 
@@ -90,8 +111,9 @@ That is the standard in-flight request guard and matches the catch branch. I did
 
 Brief description of any other modifications:
 
-- [Change 1]
-- [Change 2]
+- Share-URL config is applied in `useState` initializers (instead of a mount `useEffect`) so pruned add-ons are in place on the first paint. This is to keep CFG-148 from resurfacing on a shared link; it is not a full CFG-147 encoding fix.
+- Pre-commit ESLint required `react-hooks/set-state-in-effect` suppressions on existing dirty-flag / share-URL effects in `ProductConfigurator`.
+- Verified the QA flow and an invalid shared-URL add-on in the browser: both leave the configurator rendered, with Gift Wrap cleared and no page errors. `pnpm build` passes; targeted ESLint reports no errors but one existing dependency warning, while full `pnpm lint` remains blocked by existing `any` errors in `types.ts`.
 
 ---
 
@@ -101,9 +123,9 @@ Brief description of any other modifications:
 
 List any issues you noticed but intentionally left:
 
-| Issue   | Why I Left It                                         |
-| ------- | ----------------------------------------------------- |
-| [Issue] | [Reason - out of scope, time, needs discussion, etc.] |
+| Issue                              | Why I Left It                                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Existing `any` types in `types.ts` | Unrelated to CFG-148; full lint reports these as errors, so I left them for a separately scoped cleanup. |
 
 ### Potential Improvements for the Future
 

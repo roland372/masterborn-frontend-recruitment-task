@@ -90,6 +90,25 @@ const isAddOnAvailable = (
   return dependencyValue === addOn.dependsOn.requiredValue;
 };
 
+const pruneUnavailableAddOns = (
+  selectedIds: string[],
+  addOns: AddOn[],
+  selections: Record<string, string | number | boolean>,
+): string[] => {
+  const availableIds = selectedIds.filter((id) => {
+    const addOn = addOns.find((item) => item.id === id);
+    return addOn !== undefined && isAddOnAvailable(addOn, selections);
+  });
+
+  return availableIds.length === selectedIds.length ? selectedIds : availableIds;
+};
+
+const readSharedConfigFromUrl = (): Partial<Configuration> | null => {
+  const encodedConfig = new URLSearchParams(window.location.search).get('config');
+  if (!encodedConfig) return null;
+  return decodeConfigurationFromUrl(encodedConfig);
+};
+
 const formatTimestamp = (isoString: string): string => {
   const date = new Date(isoString);
   return date.toLocaleString();
@@ -119,15 +138,28 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
   // State
   // -------------------------------------------------------------------------
 
-  const [selections, setSelections] = useState<Record<string, string | number | boolean>>(
-    () => initialConfiguration?.selections || getDefaultSelections(product),
-  );
+  const [sharedConfiguration] = useState(readSharedConfigFromUrl);
 
-  const [selectedAddOns, setSelectedAddOns] = useState<string[]>(
-    () => initialConfiguration?.addOns || [],
-  );
+  const [selections, setSelections] = useState<Record<string, string | number | boolean>>(() => {
+    return (
+      sharedConfiguration?.selections ||
+      initialConfiguration?.selections ||
+      getDefaultSelections(product)
+    );
+  });
 
-  const [quantity, setQuantity] = useState<number>(() => initialConfiguration?.quantity || 1);
+  const [selectedAddOns, setSelectedAddOns] = useState<string[]>(() => {
+    const nextSelections =
+      sharedConfiguration?.selections ||
+      initialConfiguration?.selections ||
+      getDefaultSelections(product);
+    const rawAddOns = sharedConfiguration?.addOns || initialConfiguration?.addOns || [];
+    return pruneUnavailableAddOns(rawAddOns, product.addOns, nextSelections);
+  });
+
+  const [quantity, setQuantity] = useState<number>(() => {
+    return sharedConfiguration?.quantity || initialConfiguration?.quantity || 1;
+  });
 
   const [configId] = useState<string>(() => initialConfiguration?.id || generateConfigId());
 
@@ -180,16 +212,6 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
   const appliedDiscount = getAppliedDiscountPercentage(quantity);
   const nextTier = getNextDiscountTier(quantity);
 
-  const availableAddOns = useMemo(() => {
-    const map = new Map<string, AddOn>();
-    for (const addOn of product.addOns) {
-      if (isAddOnAvailable(addOn, selections)) {
-        map.set(addOn.id, addOn);
-      }
-    }
-    return map;
-  }, [product.addOns, selections]);
-
   // -------------------------------------------------------------------------
   // Effects
   // -------------------------------------------------------------------------
@@ -217,7 +239,9 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
           setValidation(result);
           setIsValid(true);
         }
-      } catch {}
+      } catch {
+        // Keep the last successful validation result; the next change retries.
+      }
     };
 
     validate();
@@ -252,6 +276,7 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
     if (onConfigurationChange) {
       onConfigurationChange(currentConfig);
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- dirty flag tracks local option changes
     setIsDirty(true);
   }, [selections, selectedAddOns, quantity]);
 
@@ -265,23 +290,10 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
     if (showShareModal) {
       const encoded = encodeConfigurationToUrl(currentConfig);
       const url = `${window.location.origin}${window.location.pathname}?config=${encoded}`;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- share URL is generated when the modal opens
       setShareUrl(url);
     }
   }, [showShareModal, currentConfig]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const encodedConfig = params.get('config');
-
-    if (encodedConfig) {
-      const decoded = decodeConfigurationFromUrl(encodedConfig);
-      if (decoded) {
-        if (decoded.selections) setSelections(decoded.selections);
-        if (decoded.addOns) setSelectedAddOns(decoded.addOns);
-        if (decoded.quantity) setQuantity(decoded.quantity);
-      }
-    }
-  }, []);
 
   // -------------------------------------------------------------------------
   // Event Handlers
@@ -289,29 +301,14 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
 
   const handleOptionChange = useCallback(
     (optionId: string, value: string | number | boolean) => {
-      setSelections((prev) => ({
-        ...prev,
+      const nextSelections = {
+        ...selections,
         [optionId]: value,
-      }));
-
-      const option = product.options.find((o) => o.id === optionId);
-      // Clean up any dependent add-ons whose requirement is no longer met.
-      // Toggles are handled in handleAddOnToggle, so we only need to do this for select options.
-      if (option && option.type === 'select') {
-        const dependentAddOns = product.addOns.filter((a) => a.dependsOn?.optionId === optionId);
-
-        for (const addOn of dependentAddOns) {
-          if (addOn.dependsOn && value !== addOn.dependsOn.requiredValue) {
-            const index = selectedAddOns.indexOf(addOn.id);
-            if (index > -1) {
-              selectedAddOns.splice(index, 1);
-              setSelectedAddOns(selectedAddOns);
-            }
-          }
-        }
-      }
+      };
+      setSelections(nextSelections);
+      setSelectedAddOns((prev) => pruneUnavailableAddOns(prev, product.addOns, nextSelections));
     },
-    [product.options, product.addOns, selectedAddOns],
+    [product.addOns, selections],
   );
 
   const handleAddOnToggle = useCallback(
@@ -360,20 +357,29 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
     }
   }, [currentConfig, draftName]);
 
-  const handleLoadDraft = useCallback(async (draftId: string) => {
-    try {
-      const draft = await loadDraft(draftId);
-      if (draft) {
-        setSelections(draft.configuration.selections);
-        setSelectedAddOns(draft.configuration.addOns);
-        setQuantity(draft.configuration.quantity);
-        setShowDraftModal(false);
-        setIsDirty(false);
+  const handleLoadDraft = useCallback(
+    async (draftId: string) => {
+      try {
+        const draft = await loadDraft(draftId);
+        if (draft) {
+          setSelections(draft.configuration.selections);
+          setSelectedAddOns(
+            pruneUnavailableAddOns(
+              draft.configuration.addOns,
+              product.addOns,
+              draft.configuration.selections,
+            ),
+          );
+          setQuantity(draft.configuration.quantity);
+          setShowDraftModal(false);
+          setIsDirty(false);
+        }
+      } catch {
+        setError(ERROR_CODES.UNKNOWN);
       }
-    } catch {
-      setError(ERROR_CODES.UNKNOWN);
-    }
-  }, []);
+    },
+    [product.addOns],
+  );
 
   const handleDeleteDraft = useCallback(async (draftId: string) => {
     try {
@@ -933,9 +939,10 @@ export const ProductConfigurator: React.FC<ProductConfiguratorProps> = ({
                 <span>
                   {selectedAddOns
                     .map((id) => {
-                      const addOn = availableAddOns.get(id)!;
-                      return formatPrice(addOn.price, product.currency);
+                      const addOn = product.addOns.find((item) => item.id === id);
+                      return addOn ? formatPrice(addOn.price, product.currency) : null;
                     })
+                    .filter((part): part is string => part !== null)
                     .join(' + ')}
                 </span>
               </div>

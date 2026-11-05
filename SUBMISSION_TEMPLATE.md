@@ -1,8 +1,8 @@
-# Submission: [Your Name]
+# Submission: Damian Fatyga
 
 ## Time Spent
 
-Total time: **\_\_** (approximate)
+Total time: **4 hours** (approximate)
 
 ## Ticket Triage
 

@@ -12,6 +12,7 @@ List the ticket numbers you worked on, in the order you addressed them:
 
 1. **CFG-142**: Fixed price display staying at `$0.00` by applying only the latest in-flight price response (the hook was comparing a request counter to `Date.now()`).
 2. **CFG-148**: Stopped the white-screen crash when unchecking Include Packaging after Gift Wrap is selected — dependent add-ons are now pruned instead of looked up with a non-null assertion.
+3. **CFG-143**: Removed the window resize listener when the configurator unmounts, preventing it from retaining the component and accumulating across mounts.
 
 ### Tickets I Deprioritized
 
@@ -104,6 +105,30 @@ Followed the QA steps, then traced `.price` reads. The summary was the only ungu
 **Why this approach?**
 
 Removing Gift Wrap when packaging is off matches the dependency rule and the UX (the add-on becomes disabled). A null check alone would stop the crash but leave an invalid add-on in the configuration and in the price request.
+
+---
+
+#### Issue 3: Resize listener retained after unmount
+
+**Ticket(s):** CFG-143
+
+**What was the bug?**
+
+The configurator registered a `window` resize listener but the effect did not return a cleanup function. The global listener could retain the handler and the component's DOM ref after unmount, and repeated mounts could accumulate listeners.
+
+**How did you find it?**
+
+Followed the ticket's resize clue and Marcus's note in `CONTEXT.md`; the resize effect called `addEventListener` and had no matching `removeEventListener`.
+
+**How did you fix it?**
+
+Returned effect cleanup that removes the same handler from `window`.
+
+**Why this approach?**
+
+It gives the global listener the same lifecycle as the component. The ticket's 15–20 minute memory-growth report was not independently profiled, so this addresses the confirmed listener leak without claiming it is the only possible cause of the reported sluggishness.
+
+In the browser, React Strict Mode exercised two listener registrations and one cleanup during its development remount; the configurator remained mounted after viewport resizes.
 
 ---
 
